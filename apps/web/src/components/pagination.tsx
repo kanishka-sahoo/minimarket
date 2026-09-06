@@ -36,11 +36,11 @@ export function Pagination({
   setPage: (page: number) => void;
   label?: string;
 }) {
-  if (!data) return null;
+  if (!data || data.total === 0) return null;
   return (
     <nav className="pagination" aria-label={`${label} pagination`}>
       <span aria-live="polite">
-        {data.total ? (data.page - 1) * data.pageSize + 1 : 0}–
+        {data.total ? (data.page - 1) * data.pageSize + 1 : 0}-
         {Math.min(data.page * data.pageSize, data.total)} of {data.total}
       </span>
       <button

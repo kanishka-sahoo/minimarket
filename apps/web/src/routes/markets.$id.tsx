@@ -5,7 +5,6 @@ import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
   InfoIcon,
-  RobotIcon,
   ArrowsLeftRightIcon,
 } from '@phosphor-icons/react';
 import {
@@ -20,7 +19,7 @@ import {
 } from '@minimarket/shared';
 import { api, useAction, useLive, useSession } from '../lib';
 import { Pagination, usePage } from '../components/pagination';
-import { CategoryIcon, Closing, Notice, PriceChart, Empty } from '../components/ui';
+import { CategoryIcon, Closing, Notice, PriceChart, Empty, TableSkeleton } from '../components/ui';
 export const Route = createFileRoute('/markets/$id')({
   loader: ({ params }) => api<Snapshot>('/api/markets/' + params.id),
   component: MarketDetail,
@@ -54,6 +53,7 @@ function MarketDetail() {
               <div className="market-meta">
                 <span>{m.category}</span>
                 {m.demo && <span className="tag">Fictional demo</span>}
+                {m.bot && <span className="tag">Bot liquidity</span>}
                 <span className={`live-state ${connected ? 'online' : ''}`}>
                   {connected ? 'Live updates' : 'Connecting…'}
                 </span>
@@ -79,17 +79,14 @@ function MarketDetail() {
           {m.demo && (
             <div className="demo-strip">
               <InfoIcon size={17} />
-              <span>
-                This scenario is fictional. Bot quotes demonstrate trading, not real-world
-                probabilities.
-              </span>
+              <span>Fictional scenario. Quotes are demonstrations, not forecasts.</span>
             </div>
           )}
           <section className="chart-panel">
             <div className="chart-heading">
               <div>
                 <span className="muted">{o.label} · Last trade</span>
-                <strong>{o.last === null ? '—' : `${Math.round(o.last / CENT)}%`}</strong>
+                <strong>{o.last === null ? 'No trades' : `${Math.round(o.last / CENT)}%`}</strong>
               </div>
               <span className="tag">Executed trades</span>
             </div>
@@ -139,7 +136,7 @@ function MarketDetail() {
               </div>
             ) : tab === 'Recent trades' ? (
               history.isPending ? (
-                <p>Loading trades…</p>
+                <TableSkeleton rows={4} />
               ) : history.error ? (
                 <Notice error>{history.error.message}</Notice>
               ) : history.data?.items.length ? (
@@ -175,16 +172,7 @@ function MarketDetail() {
                 <a href={m.source} target="_blank" rel="noreferrer">
                   Published evidence source <ArrowUpRightIcon size={15} />
                 </a>
-                <p>
-                  Exactly one outcome pays $1 per share. On a void, each outcome receives an equal
-                  share of $1. Indivisible millionths go to outcomes in listed order. Past trades
-                  are not reversed.
-                </p>
-                {m.evidence && <Notice>Admin resolution evidence: {m.evidence}</Notice>}
-                <small>
-                  Terms are fixed at publication. Only administrators can resolve or void this
-                  market.
-                </small>
+                {m.evidence && <Notice>Resolution evidence: {m.evidence}</Notice>}
               </div>
             )}
             {tab === 'Recent trades' && (
@@ -194,17 +182,6 @@ function MarketDetail() {
         </div>
         <aside className="trade-sidebar">
           <TradePanel key={o.id} snapshot={s} outcomeId={o.id} connected={connected} />
-          <section className="bot-note">
-            <RobotIcon size={22} />
-            <div>
-              <strong>{m.bot ? 'Demo liquidity bot' : 'A community order book'}</strong>
-              <p>
-                {m.bot
-                  ? 'A labeled bot supplies a finite amount of liquidity. It pauses when this market is inactive.'
-                  : 'This market trades between users. An admin can approve bot liquidity.'}
-              </p>
-            </div>
-          </section>
         </aside>
       </div>
     </>
@@ -286,7 +263,7 @@ function TradePanel({
     side === 'buy'
       ? p
         ? money(p.user.cash - p.user.reserved)
-        : '—'
+        : null
       : `${holding ? holding.quantity - holding.reserved : 0} shares`;
   useEffect(() => {
     setPreview(null);
@@ -359,10 +336,12 @@ function TradePanel({
             <option value="limit">Limit</option>
           </select>
         </div>
-        <div className="available">
-          <span>Available</span>
-          <strong>{available}</strong>
-        </div>
+        {available !== null && (
+          <div className="available">
+            <span>Available</span>
+            <strong>{available}</strong>
+          </div>
+        )}
         <label>
           Number of shares
           <input
@@ -462,10 +441,6 @@ function TradePanel({
                       : `Place ${side} order`}
           </button>
         )}
-        <p className="trade-disclaimer">
-          Play money only. A winning share pays $1.
-          <br />A losing share pays $0.
-        </p>
       </section>
       <details className="complete-sets">
         <summary>

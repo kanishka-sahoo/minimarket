@@ -87,6 +87,7 @@ export interface User {
   cash: number;
   reserved: number;
   epoch: number;
+  resetUsed: boolean;
 }
 export interface Outcome {
   id: string;
@@ -189,7 +190,7 @@ export const money = (n: number, precision = 2) =>
     currency: 'USD',
     maximumFractionDigits: precision,
   }).format(n / DOLLAR);
-export const cents = (n: number | null) => (n === null ? '—' : `${Math.round(n / CENT)}¢`);
+export const cents = (n: number | null) => (n === null ? '-' : `${Math.round(n / CENT)}¢`);
 
 export const pageQuerySchema = z
   .object({

@@ -36,7 +36,7 @@ export async function readPage(
       if (q.outcomeId) sql += ` AND outcome_id=${bind(q.outcomeId)}`;
       order = 'created_at DESC,id DESC';
     } else if (collection === 'leaderboard') {
-      sql = `SELECT a.id,a.name,a.epoch,a.created_at,COALESCE(SUM(l.delta),0)::bigint AS profit,COUNT(DISTINCT l.market_id)::integer AS markets FROM accounts a JOIN ledger l ON l.account_id=a.id AND l.epoch=a.epoch JOIN markets m ON m.id=l.market_id AND m.status='settled' WHERE NOT a.bot AND l.kind NOT IN ('grant','reset','bot-grant') GROUP BY a.id`;
+      sql = `SELECT a.id,a.name,a.epoch,a.created_at,COALESCE(SUM(l.delta),0)::bigint AS profit,COUNT(DISTINCT l.market_id)::integer AS markets FROM accounts a JOIN ledger l ON l.account_id=a.id JOIN markets m ON m.id=l.market_id AND m.status='settled' WHERE NOT a.bot AND l.kind NOT IN ('grant','reset','bot-grant') GROUP BY a.id`;
       order = 'profit DESC,created_at ASC,id ASC';
     } else {
       assert(user, 'Sign in required', 401);

@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { TrophyIcon, ArrowUpRightIcon } from '@phosphor-icons/react';
+import { ArrowUpRightIcon } from '@phosphor-icons/react';
 import { money, type Page } from '@minimarket/shared';
 import { api } from '../lib';
 import { Pagination, usePage } from '../components/pagination';
-import { Empty, Notice } from '../components/ui';
+import { Empty, Notice, TableSkeleton } from '../components/ui';
 type Ranking = { id: string; name: string; epoch: number; profit: number; markets: number };
 export const Route = createFileRoute('/leaderboard')({
   loader: () => api<Page<Ranking>>('/api/pages/leaderboard'),
@@ -15,21 +15,22 @@ function Leaderboard() {
   const offset = ((listing.data?.page ?? 1) - 1) * (listing.data?.pageSize ?? 24);
   return (
     <>
-      <section className="discovery-intro">
+      <section className="page-head">
         <div>
-          <span className="eyebrow">GOOD JUDGMENT ADDS UP</span>
           <h1>The leaderboard</h1>
-          <p>Conviction is a start. Settled results tell the story.</p>
+          <p>Net profit from settled markets. Open positions are not counted.</p>
         </div>
-        <TrophyIcon size={64} weight="duotone" className="trophy" />
+        <Link to="/" className="button secondary">
+          Explore markets <ArrowUpRightIcon size={17} />
+        </Link>
       </section>
-      <div className="leaderboard-layout">
+      {listing.error ? (
+        <Notice error>{listing.error.message}</Notice>
+      ) : listing.isPending ? (
+        <TableSkeleton rows={6} />
+      ) : (
         <section className="ranking-table">
-          {listing.error ? (
-            <Notice error>{listing.error.message}</Notice>
-          ) : listing.isPending ? (
-            <p>Loading rankings…</p>
-          ) : data.length ? (
+          {data.length ? (
             <table>
               <thead>
                 <tr>
@@ -70,21 +71,7 @@ function Leaderboard() {
           )}
           <Pagination data={listing.data} setPage={listing.setPage} label="Leaderboard" />
         </section>
-        <aside className="writing-guide">
-          <h2>Results, without the noise.</h2>
-          <p>
-            Rankings count net cash profit from settled markets, including trades, complete sets,
-            and payouts.
-          </p>
-          <p>
-            Open-market price changes, starting grants, and bot accounts don’t count. Resetting your
-            account starts a new record.
-          </p>
-          <Link to="/" className="text-button">
-            Find your next market <ArrowUpRightIcon size={16} />
-          </Link>
-        </aside>
-      </div>
+      )}
     </>
   );
 }

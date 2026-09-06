@@ -13,11 +13,18 @@ import {
   WalletIcon,
   TrophyIcon,
   SignOutIcon,
+  MoonIcon,
+  SunIcon,
+  CompassIcon,
 } from '@phosphor-icons/react';
 import { money } from '@minimarket/shared';
 import { useAction, useSession } from '../lib';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import styles from '../styles.css?url';
+
+// Runs before first paint so a stored theme never flashes the wrong palette.
+const themeScript = `(function(){try{var t=localStorage.getItem('mm-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}})()`;
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -42,17 +49,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     </div>
   ),
   notFoundComponent: () => (
-    <main className="empty">
-      <h1>This market is off the map.</h1>
-      <Link to="/">Explore markets</Link>
+    <main className="page">
+      <div className="empty">
+        <h1>This market is off the map.</h1>
+        <p>The question you followed has moved or never existed.</p>
+        <Link to="/">Explore markets</Link>
+      </div>
     </main>
   ),
 });
+
 function Root() {
   const { queryClient } = Route.useRouteContext();
   return (
     <html lang="en">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
       </head>
       <body>
@@ -64,15 +76,47 @@ function Root() {
     </html>
   );
 }
+
+function ThemeToggle() {
+  const [theme, setTheme] = useState<'light' | 'dark' | null>(null);
+  useEffect(() => {
+    const stored = localStorage.getItem('mm-theme');
+    setTheme(
+      stored === 'light' || stored === 'dark'
+        ? stored
+        : matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light',
+    );
+  }, []);
+  const flip = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem('mm-theme', next);
+    } catch {
+      // Storage can be unavailable; the toggle still applies for this page view.
+    }
+    setTheme(next);
+  };
+  return (
+    <button
+      className="theme-toggle"
+      onClick={flip}
+      aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      title="Switch theme"
+    >
+      <span style={{ display: 'grid', placeItems: 'center', width: 18, height: 18 }}>
+        {theme === 'dark' ? <SunIcon size={18} /> : theme ? <MoonIcon size={18} /> : null}
+      </span>
+    </button>
+  );
+}
+
 function Shell() {
   const session = useSession();
   const user = session.data?.user;
   const logout = useAction();
-  const [help, setHelp] = useState(false);
-  const helpDialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (help) helpDialog.current?.showModal();
-  }, [help]);
   return (
     <>
       <a className="skip-link" href="#main">
@@ -82,23 +126,26 @@ function Shell() {
         <div className="header-inner">
           <Link to="/" className="brand" aria-label="MiniMarket home">
             <span className="brand-mark">
-              <ChartBarIcon weight="fill" size={22} />
+              <ChartBarIcon weight="fill" size={19} />
             </span>
-            mini<span>market</span>
+            <span className="wordmark">
+              mini<span>market</span>
+            </span>
           </Link>
           <nav aria-label="Main navigation">
             <Link to="/" activeProps={{ className: 'active' }} activeOptions={{ exact: true }}>
-              Markets
+              <CompassIcon size={17} /> <span>Markets</span>
             </Link>
             <Link to="/portfolio" activeProps={{ className: 'active' }}>
-              <WalletIcon size={17} /> Portfolio
+              <WalletIcon size={17} /> <span>Portfolio</span>
             </Link>
             <Link to="/leaderboard" activeProps={{ className: 'active' }}>
-              <TrophyIcon size={17} /> Leaderboard
+              <TrophyIcon size={17} /> <span>Leaderboard</span>
             </Link>
           </nav>
           <div className="header-actions">
-            <span className="play-label">PLAY MONEY</span>
+            <span className="play-label">Play money</span>
+            <ThemeToggle />
             {user ? (
               <>
                 <Link className="balance" to="/portfolio">
@@ -125,65 +172,18 @@ function Shell() {
         <Outlet />
       </main>
       <footer>
-        <Link to="/" className="footer-brand">
-          minimarket
-        </Link>
-        <span>Big ideas. Small stakes. All play money.</span>
-        <button className="text-button" onClick={() => setHelp(true)}>
-          How it works
-        </button>
-        {user?.admin && <Link to="/admin">Admin</Link>}
-        <Link to="/create">
-          <PlusIcon size={14} /> Create a market
-        </Link>
+        <div className="footer-inner">
+          <Link to="/" className="footer-brand">
+            minimarket
+          </Link>
+          <span>Play money only. No deposits, withdrawals, or prizes.</span>
+          <span className="footer-spacer" />
+          {user?.admin && <Link to="/admin">Admin</Link>}
+          <Link to="/create">
+            <PlusIcon size={14} /> Create a market
+          </Link>
+        </div>
       </footer>
-      {help && (
-        <dialog
-          ref={helpDialog}
-          className="help-modal"
-          onClose={() => setHelp(false)}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setHelp(false);
-          }}
-        >
-          <section
-            className="help-dialog"
-            aria-label="How MiniMarket works"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2>A little conviction goes a long way.</h2>
-            <p>
-              Sign in with Google to receive 10,000 free play dollars. No deposits, withdrawals, or
-              prizes.
-            </p>
-            <ol>
-              <li>
-                <strong>Choose an outcome.</strong> A winning share pays $1. Other outcomes pay
-                zero.
-              </li>
-              <li>
-                <strong>Name your price.</strong> Limit orders wait for a match. Instant trades fill
-                available orders within your chosen price limit.
-              </li>
-              <li>
-                <strong>Create shares.</strong> Lock $1 to mint a full set, one share of every
-                outcome. Redeem a full set for $1 before closing.
-              </li>
-              <li>
-                <strong>See it through.</strong> Admins resolve closed markets using their published
-                rules. Voided markets divide $1 equally across outcomes; previous trades stand.
-              </li>
-            </ol>
-            <p className="muted">
-              Fictional markets and liquidity bots are clearly labeled. Bot quotes demonstrate
-              trading, not forecasts. Rankings count settled profit only.
-            </p>
-            <button autoFocus onClick={() => setHelp(false)}>
-              Got it
-            </button>
-          </section>
-        </dialog>
-      )}
     </>
   );
 }

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ArrowLeftIcon, PlusIcon, TrashIcon, ArrowUpRightIcon } from '@phosphor-icons/react';
 import { categories, marketSchema } from '@minimarket/shared';
 import { useAction, useSession } from '../lib';
-import { Notice, SignIn } from '../components/ui';
+import { Notice, SignIn, TableSkeleton } from '../components/ui';
 export const Route = createFileRoute('/create')({ component: CreateMarket });
 function CreateMarket() {
   const { data: session, isLoading } = useSession();
@@ -12,7 +12,7 @@ function CreateMarket() {
   const [kind, setKind] = useState<'binary' | 'multi'>('binary'),
     [outcomes, setOutcomes] = useState(['Outcome A', 'Outcome B', 'Other']),
     [error, setError] = useState('');
-  if (isLoading) return <p>Loading account…</p>;
+  if (isLoading) return <TableSkeleton rows={5} />;
   if (!session?.user) return <SignIn />;
   return (
     <div className="form-layout">
@@ -20,7 +20,6 @@ function CreateMarket() {
         <Link to="/" className="back-link">
           <ArrowLeftIcon size={15} /> All markets
         </Link>
-        <span className="eyebrow">TURN A QUESTION INTO A MARKET</span>
         <h1>What are you wondering?</h1>
         <p className="lede">Make it specific. Make it verifiable. Let the market weigh in.</p>
         <form
@@ -90,7 +89,7 @@ function CreateMarket() {
                 onClick={() => setKind('multi')}
               >
                 <strong>Multiple outcomes</strong>
-                <small>2–8 choices. Exactly one winner.</small>
+                <small>2-8 choices. Exactly one winner.</small>
               </button>
             </div>
           </fieldset>
@@ -171,9 +170,7 @@ function CreateMarket() {
             <p>You can’t edit terms or choose the winner after publishing.</p>
           </li>
         </ol>
-        <Notice>
-          Your market publishes immediately. Bot liquidity requires a separate admin allocation.
-        </Notice>
+        <Notice>Your market publishes immediately.</Notice>
       </aside>
     </div>
   );

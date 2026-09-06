@@ -7,7 +7,6 @@ function Login() {
   const { data, error } = useSession();
   return (
     <section className="signin-panel">
-      <span className="eyebrow">A MARKET FOR YOUR CURIOSITY</span>
       <h1>Bring your perspective.</h1>
       <p>
         Start with 10,000 free play dollars. Trade outcome shares, create questions, and learn from

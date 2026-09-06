@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   MagnifyingGlassIcon,
   ArrowUpRightIcon,
@@ -8,9 +8,9 @@ import {
   SlidersHorizontalIcon,
 } from '@phosphor-icons/react';
 import { categories, type Market, type Page } from '@minimarket/shared';
-import { api } from '../lib';
+import { api, useSession } from '../lib';
 import { Pagination, usePage } from '../components/pagination';
-import { MarketCard, Empty, Notice } from '../components/ui';
+import { MarketCard, MarketCardSkeleton, Empty, Notice } from '../components/ui';
 export const Route = createFileRoute('/')({
   loader: () => api<Page<Market>>('/api/pages/markets'),
   component: Markets,
@@ -19,6 +19,14 @@ function Markets() {
   const [search, setSearch] = useState(''),
     [category, setCategory] = useState('All markets'),
     [sort, setSort] = useState('newest');
+  const searchInput = useRef<HTMLInputElement>(null);
+  const session = useSession();
+  // Kept in the tree and toggled after mount: branching the SSR output on
+  // client-only session state would break hydration.
+  const [signedOut, setSignedOut] = useState(false);
+  useEffect(() => {
+    if (session.data) setSignedOut(!session.data.user);
+  }, [session.data]);
   const listing = usePage<Market>(
     'markets',
     { search, sort, ...(category === 'All markets' ? {} : { category }) },
@@ -26,11 +34,22 @@ function Markets() {
     Route.useLoaderData(),
   );
   const shown = listing.data?.items ?? [];
+  // The "/" hint in the search field is a real shortcut, not decoration.
+  useEffect(() => {
+    const focus = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (e.key !== '/' || e.metaKey || e.ctrlKey) return;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      e.preventDefault();
+      searchInput.current?.focus();
+    };
+    document.addEventListener('keydown', focus);
+    return () => document.removeEventListener('keydown', focus);
+  }, []);
   return (
     <>
-      <section className="discovery-intro">
+      <section className="page-head">
         <div>
-          <span className="eyebrow">A MARKET FOR YOUR CURIOSITY</span>
           <h1>What happens next?</h1>
           <p>Put your perspective to the test. Trade predictions with play money.</p>
         </div>
@@ -38,9 +57,9 @@ function Markets() {
           <PlusIcon size={17} /> Create a market
         </Link>
       </section>
-      <section className="welcome-banner">
+      <section className="welcome-banner" hidden={!signedOut}>
         <div className="banner-symbol">
-          <ArrowUpRightIcon size={38} weight="bold" />
+          <ArrowUpRightIcon size={28} weight="bold" />
         </div>
         <div>
           <h2>Real conviction. Zero financial risk.</h2>
@@ -50,11 +69,12 @@ function Markets() {
           Start predicting <ArrowRightIcon size={18} />
         </a>
       </section>
-      <section aria-label="Market filters">
+      <section aria-label="Market filters" style={{ display: 'grid', gap: 14 }}>
         <div className="browse-toolbar">
           <div className="search-field">
-            <MagnifyingGlassIcon size={19} />
+            <MagnifyingGlassIcon size={18} />
             <input
+              ref={searchInput}
               aria-label="Search markets"
               placeholder="Search for a question, idea, or possibility…"
               value={search}
@@ -96,7 +116,11 @@ function Markets() {
       </div>
       {listing.error && <Notice error>{listing.error.message}</Notice>}
       {listing.isPending ? (
-        <p>Loading markets…</p>
+        <div className="market-grid" aria-busy="true" aria-label="Loading markets">
+          {Array.from({ length: 6 }, (_, i) => (
+            <MarketCardSkeleton key={i} />
+          ))}
+        </div>
       ) : shown.length ? (
         <div className="market-grid">
           {shown.map((m) => (
@@ -109,10 +133,6 @@ function Markets() {
         </Empty>
       )}
       <Pagination data={listing.data} setPage={listing.setPage} label="Markets" />
-      <aside className="discovery-note">
-        <span className="status-dot" /> Fictional demo markets are labeled. Displayed quotes are
-        executable asks, not forecasts. All balances are play money.
-      </aside>
     </>
   );
 }

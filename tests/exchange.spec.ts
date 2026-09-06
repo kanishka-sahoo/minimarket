@@ -14,10 +14,10 @@ test('discovery, search, categories and mobile layout', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'What happens next?' })).toBeVisible();
   await expect(page.locator('.market-card')).toHaveCount(6);
   await page.screenshot({ path: 'test-results/desktop-discovery.png', fullPage: true });
-  await page.getByRole('button', { name: 'How it works', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: 'Switch to light theme' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.getByRole('button', { name: 'Science', exact: true }).click();
   await expect(page.locator('.market-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'All markets', exact: true }).click();
@@ -63,7 +63,7 @@ test('signed-in visitor buys, sells, mints, redeems, cancels and sees portfolio'
   await expect(page.getByRole('heading', { name: 'No orders here' })).toBeVisible();
   await page.getByRole('button', { name: 'Reset account', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm reset', exact: true }).click();
-  await expect(page.getByText('Current account history · 2')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset used', exact: true })).toBeDisabled();
 });
 test('user creates market, admin funds and settles, ledger updates', async ({ page }) => {
   const title = 'Will the browser test complete ' + randomUUID().slice(0, 8) + '?';

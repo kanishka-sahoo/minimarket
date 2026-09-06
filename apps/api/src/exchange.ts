@@ -157,15 +157,24 @@ export async function expireMarket(id: string) {
 }
 export async function createAccount(subject: string, email: string, name: string, admin = false) {
   return transaction(async (c) => {
-    const existing = (await c.query('SELECT * FROM accounts WHERE subject=$1', [subject])).rows[0];
+    const existing = (
+      await c.query(
+        'SELECT id,name,email,admin,cash,reserved,epoch,reset_used AS "resetUsed" FROM accounts WHERE subject=$1',
+        [subject],
+      )
+    ).rows[0];
     if (existing) {
-      await c.query('UPDATE accounts SET admin=$2 WHERE id=$1', [existing.id, admin]);
-      return { ...existing, admin };
+      return (
+        await c.query(
+          'UPDATE accounts SET email=$2,name=$3,admin=$4 WHERE id=$1 RETURNING id,name,email,admin,cash,reserved,epoch,reset_used AS "resetUsed"',
+          [existing.id, email, name, admin],
+        )
+      ).rows[0];
     }
     const id = randomUUID();
     const a = (
       await c.query(
-        'INSERT INTO accounts(id,subject,email,name,admin,cash) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+        'INSERT INTO accounts(id,subject,email,name,admin,cash) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,name,email,admin,cash,reserved,epoch,reset_used AS "resetUsed"',
         [id, subject, email, name, admin, GRANT],
       )
     ).rows[0];
@@ -448,7 +457,11 @@ export async function resetAccount(actor: string, key: string) {
         [actor],
       )
     ).rows;
-    await c.query('SELECT id FROM accounts WHERE id=$1 FOR UPDATE', [actor]);
+    const account = (
+      await c.query('SELECT cash,reset_used FROM accounts WHERE id=$1 FOR UPDATE', [actor])
+    ).rows[0];
+    assert(account, 'Account not found', 404);
+    assert(!account.reset_used, 'The one-time account reset has already been used', 409);
     const h = await c.query('SELECT 1 FROM holdings WHERE account_id=$1 AND quantity>0 LIMIT 1', [
       actor,
     ]);
@@ -457,12 +470,11 @@ export async function resetAccount(actor: string, key: string) {
       await c.query("SELECT * FROM orders WHERE account_id=$1 AND status='open'", [actor])
     ).rows)
       await cancelInTx(c, o);
-    const old = (await c.query('SELECT cash FROM accounts WHERE id=$1', [actor])).rows[0].cash;
-    await c.query('UPDATE accounts SET epoch=epoch+1,cash=$2,reserved=0 WHERE id=$1', [
-      actor,
-      GRANT,
-    ]);
-    await ledger(c, actor, null, GRANT - old, 'reset', key);
+    await c.query(
+      'UPDATE accounts SET epoch=epoch+1,cash=$2,reserved=0,reset_used=true WHERE id=$1',
+      [actor, GRANT],
+    );
+    await ledger(c, actor, null, GRANT - account.cash, 'reset', key);
     for (const m of markets) changed.add(m.id);
     return { cash: GRANT };
   });

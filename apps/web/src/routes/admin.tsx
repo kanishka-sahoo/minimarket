@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { DOLLAR, type Market } from '@minimarket/shared';
 import { api, useAction, useSession } from '../lib';
 import { Pagination, usePage } from '../components/pagination';
-import { Notice, SignIn } from '../components/ui';
+import { Notice, SignIn, TableSkeleton } from '../components/ui';
 export const Route = createFileRoute('/admin')({ component: Admin });
 function Admin() {
   const { data: session, isLoading } = useSession();
@@ -15,15 +15,14 @@ function Admin() {
   );
   const markets = listing.data?.items ?? [];
   const [selected, setSelected] = useState('');
-  if (isLoading) return <p>Loading account…</p>;
+  if (isLoading) return <TableSkeleton rows={4} />;
   if (!session?.user) return <SignIn />;
   if (!session.user.admin) return <Notice error>Administrator access is required.</Notice>;
   const market = markets.find((m) => m.id === selected);
   return (
     <>
-      <section className="discovery-intro">
+      <section className="page-head">
         <div>
-          <span className="eyebrow">MARKET OPERATIONS</span>
           <h1>Admin controls</h1>
           <p>Curate discovery, allocate finite liquidity, and settle published questions.</p>
         </div>
@@ -40,7 +39,7 @@ function Admin() {
         />
       </label>
       {listing.error && <Notice error>{listing.error.message}</Notice>}
-      {listing.isPending && <p>Loading markets…</p>}
+      {listing.isPending && <TableSkeleton rows={3} />}
       <label className="admin-selector">
         Select a market
         <select value={selected} onChange={(e) => setSelected(e.target.value)}>

@@ -31,7 +31,7 @@ Create a Google Cloud OAuth client of type **Web application**, configure its co
 - `ADMIN_EMAILS`: comma-separated verified Google email addresses
 - `APP_ORIGIN=http://localhost:4000`
 
-Register `http://localhost:4000/auth/google/callback` as an authorized redirect URI. The app requests only OpenID, email, and profile scopes. It verifies state, a browser-bound state cookie, PKCE, ID-token audience, nonce, and verified email. Session tokens are random; only their hashes are stored. Production cookies are Secure, HttpOnly, and SameSite=Lax. Admin permissions are refreshed on login.
+Register `http://localhost:4000/auth/google/callback` as an authorized redirect URI. The app requests only OpenID, email, and profile scopes. It verifies state, a browser-bound state cookie, PKCE, ID-token audience, nonce, and verified email. Session tokens are random; only their hashes are stored. Production cookies are Secure, HttpOnly, and SameSite=Lax. Google account permissions are reconciled with `ADMIN_EMAILS` on every authenticated request.
 
 ## Verification
 
@@ -76,8 +76,8 @@ The public `/health` endpoint reports process readiness. Logs include request fa
 - Every financial command has an account-scoped UUID idempotency key and payload fingerprint. Retries with the same payload return the original result; changing the payload with the same key returns HTTP 409. The browser retains the key after a failed request until a successful response or a different command.
 - SERIALIZABLE transactions lock a market row and affected accounts in deterministic order, with up to five attempts for serialization/deadlock failures. Market versions increment in the same transaction; WebSocket notifications occur only after commit. Reconnects fetch authoritative snapshots. Active viewers also check PostgreSQL market versions every two seconds, so notifications converge across autoscaled API instances without Redis.
 - Closing is enforced at command time, independent of timers. Market detail, portfolio access, and active bot ticks lazily close expired markets and release reservations. Hiding affects discovery only; halting stops trading and cancels orders.
-- Administrators may resolve or void markets they created. Admin settlement is immutable. A winner pays $1 per share. A void allocates one dollar equally across outcomes; leftover millionths go to outcomes in publication order. Settlement checks that total payments exactly equal collateral and clears holdings atomically. Old trades are never unwound.
-- The ledger records grants, resets, trades, complete sets, and settlement cash movements. Rankings aggregate current-epoch market cash flows only after settlement. Portfolio marks are last trades, not liquidation guarantees; unpriced holdings are disclosed and excluded.
+- Administrators may resolve or void any market. Admin settlement is immutable. A winner pays $1 per share. A void allocates one dollar equally across outcomes; leftover millionths go to outcomes in publication order. Settlement checks that total payments exactly equal collateral and clears holdings atomically. Old trades are never unwound.
+- Each account has at most one reset to the initial 10,000-play-dollar balance after clearing its holdings; existing reset users cannot reset again. The ledger retains every history. Rankings aggregate lifetime market cash flows only after settlement, so a reset never erases an offsetting trading loss. Portfolio marks are last trades, not liquidation guarantees; unpriced holdings are disclosed and excluded.
 
 ## Bot behavior
 

@@ -22,6 +22,7 @@ import {
 } from '../src/exchange.ts';
 import { portfolio, leaderboard, snapshot } from '../src/queries.ts';
 import { buildApp } from '../src/server.ts';
+import { hash } from '../src/auth.ts';
 let admin: string, a: string, b: string, m: string, outcomes: string[];
 const key = () => randomUUID();
 async function market(labels = ['Yes', 'No']) {
@@ -275,15 +276,35 @@ test('three-outcome void distributes rounding without losing collateral', async 
   expect(s.market.outcomes.map((o) => o.payout)).toEqual([333334, 333333, 333333]);
   expect((await portfolio(a)).user.cash).toBe(GRANT);
 });
-test('reset cancels orders, requires no holdings, keeps audit and clears rank', async () => {
+test('reset cancels orders, requires no holdings, keeps audit and is one-time', async () => {
   await mint(a, 1);
   await expect(resetAccount(a, key())).rejects.toThrow('holdings');
   await completeSet(a, key(), { marketId: m, action: 'redeem', quantity: 1 });
   await order(a, 'buy', 40, 2);
   await resetAccount(a, key());
   const p = await portfolio(a);
-  expect(p.user).toMatchObject({ cash: GRANT, reserved: 0, epoch: 1 });
+  expect(p.user).toMatchObject({ cash: GRANT, reserved: 0, epoch: 1, resetUsed: true });
   expect(p.history.some((l) => l.kind === 'mint')).toBe(true);
+  await expect(resetAccount(a, key())).rejects.toThrow('already been used');
+});
+test('one-time reset and lifetime ranking block repeatable reset laundering', async () => {
+  const cycle = async () => {
+    await mint(b, 10_000);
+    await order(b, 'sell', 99, 10_000);
+    await order(a, 'buy', 99, 10_000, { tif: 'IOC' });
+    await order(b, 'buy', 1, 10_000);
+    await order(a, 'sell', 1, 10_000, { tif: 'IOC' });
+    await completeSet(b, key(), { marketId: m, action: 'redeem', quantity: 10_000 });
+  };
+  await cycle();
+  await resetAccount(a, key());
+  await cycle();
+  await expect(resetAccount(a, key())).rejects.toThrow('already been used');
+  await moderate(admin, key(), m, 'halt');
+  await settle(admin, key(), m, outcomes[0], 'Reset laundering regression test');
+  const rankings = await leaderboard();
+  expect(rankings.find((row) => row.id === b)?.profit).toBe(19_600 * DOLLAR);
+  expect(rankings.find((row) => row.id === a)?.profit).toBe(-19_600 * DOLLAR);
 });
 test('non-admin cannot moderate, allocate bots, or settle', async () => {
   await expect(moderate(a, key(), m, 'halt')).rejects.toThrow('Admin');
@@ -407,6 +428,36 @@ test('HTTP authentication, CSRF, immutable terms and admin boundaries', async ()
     });
     expect((await app.inject({ url: '/api/me', headers: { cookie } })).json().user).toBeNull();
   } finally {
+    await app.close();
+  }
+});
+test('authenticated Google roles follow the current admin allowlist', async () => {
+  const previous = process.env.ADMIN_EMAILS;
+  const email = 'revoked-admin@example.test';
+  const user = await createAccount('google:revoked-admin', email, 'Revoked admin', true);
+  const token = randomUUID();
+  await pool.query(
+    "INSERT INTO sessions(token_hash,account_id,expires_at) VALUES($1,$2,now()+interval '1 hour')",
+    [hash(token), user.id],
+  );
+  const app = await buildApp();
+  try {
+    process.env.ADMIN_EMAILS = email;
+    expect(
+      (await app.inject({ url: '/api/me', headers: { cookie: `session=${token}` } })).json().user
+        .admin,
+    ).toBe(true);
+    process.env.ADMIN_EMAILS = '';
+    expect(
+      (await app.inject({ url: '/api/me', headers: { cookie: `session=${token}` } })).json().user
+        .admin,
+    ).toBe(false);
+    expect(
+      (await pool.query('SELECT admin FROM accounts WHERE id=$1', [user.id])).rows[0].admin,
+    ).toBe(false);
+  } finally {
+    if (previous === undefined) delete process.env.ADMIN_EMAILS;
+    else process.env.ADMIN_EMAILS = previous;
     await app.close();
   }
 });

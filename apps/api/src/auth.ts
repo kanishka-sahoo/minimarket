@@ -8,17 +8,33 @@ export const origin = resolveOrigin();
 const secure = origin.startsWith('https:');
 const cookieOptions = { path: '/', httpOnly: true, secure, sameSite: 'lax' as const };
 export const hash = (s: string) => createHash('sha256').update(s).digest('hex');
+const configuredAdmin = (email: string) =>
+  (process.env.ADMIN_EMAILS ?? '')
+    .toLowerCase()
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .includes(email.toLowerCase());
 export async function currentUser(req: FastifyRequest) {
   const token = req.cookies.session;
   if (!token) return null;
-  return (
+  const user =
     (
       await pool.query(
-        'SELECT a.id,a.name,a.email,a.admin,a.cash,a.reserved,a.epoch FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>now()',
+        'SELECT a.id,a.name,a.email,a.admin,a.cash,a.reserved,a.epoch,a.reset_used AS "resetUsed",a.subject LIKE \'test:%\' AS "testIdentity" FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>now()',
         [hash(token)],
       )
-    ).rows[0] ?? null
-  );
+    ).rows[0] ?? null;
+  if (!user) return null;
+  if (!user.testIdentity) {
+    const admin = configuredAdmin(user.email);
+    if (admin !== user.admin) {
+      await pool.query('UPDATE accounts SET admin=$2 WHERE id=$1', [user.id, admin]);
+      user.admin = admin;
+    }
+  }
+  delete user.testIdentity;
+  return user;
 }
 export async function authenticated(req: FastifyRequest) {
   const user = await currentUser(req);
@@ -99,15 +115,11 @@ export async function registerAuth(app: FastifyInstance) {
       'Verified Google identity required',
       401,
     );
-    const admins = (process.env.ADMIN_EMAILS ?? '')
-      .toLowerCase()
-      .split(',')
-      .map((x) => x.trim());
     const user = await createAccount(
       p.sub,
       p.email,
       p.name ?? p.email.split('@')[0],
-      admins.includes(p.email.toLowerCase()),
+      configuredAdmin(p.email),
     );
     await session(reply, user.id);
     return reply.redirect('/portfolio');

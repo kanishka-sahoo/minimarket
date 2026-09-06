@@ -57,9 +57,10 @@ export async function portfolio(id: string, summary = false): Promise<Portfolio>
   for (const m of due) await expireMarket(m.id);
   return transaction(async (c) => {
     const user = (
-      await c.query('SELECT id,name,email,admin,cash,reserved,epoch FROM accounts WHERE id=$1', [
-        id,
-      ])
+      await c.query(
+        'SELECT id,name,email,admin,cash,reserved,epoch,reset_used AS "resetUsed" FROM accounts WHERE id=$1',
+        [id],
+      )
     ).rows[0];
     assert(user, 'Account not found', 404);
     const holdings = (
@@ -82,8 +83,8 @@ export async function portfolio(id: string, summary = false): Promise<Portfolio>
     ).rows;
     const profit = (
       await c.query(
-        "SELECT COALESCE(SUM(l.delta),0)::bigint AS total FROM ledger l JOIN markets m ON m.id=l.market_id WHERE l.account_id=$1 AND l.epoch=$2 AND m.status='settled' AND l.kind NOT IN ('grant','reset','bot-grant')",
-        [id, user.epoch],
+        "SELECT COALESCE(SUM(l.delta),0)::bigint AS total FROM ledger l JOIN markets m ON m.id=l.market_id WHERE l.account_id=$1 AND m.status='settled' AND l.kind NOT IN ('grant','reset','bot-grant')",
+        [id],
       )
     ).rows[0].total;
     const totals = (
@@ -116,7 +117,7 @@ export async function portfolio(id: string, summary = false): Promise<Portfolio>
 export async function leaderboard() {
   return (
     await pool.query(
-      `SELECT a.id,a.name,a.epoch,COALESCE(SUM(l.delta),0)::bigint AS profit,COUNT(DISTINCT l.market_id)::integer AS markets FROM accounts a JOIN ledger l ON l.account_id=a.id AND l.epoch=a.epoch JOIN markets m ON m.id=l.market_id AND m.status='settled' WHERE NOT a.bot AND l.kind NOT IN ('grant','reset','bot-grant') GROUP BY a.id ORDER BY profit DESC,a.created_at LIMIT 100`,
+      `SELECT a.id,a.name,a.epoch,COALESCE(SUM(l.delta),0)::bigint AS profit,COUNT(DISTINCT l.market_id)::integer AS markets FROM accounts a JOIN ledger l ON l.account_id=a.id JOIN markets m ON m.id=l.market_id AND m.status='settled' WHERE NOT a.bot AND l.kind NOT IN ('grant','reset','bot-grant') GROUP BY a.id ORDER BY profit DESC,a.created_at LIMIT 100`,
     )
   ).rows;
 }
