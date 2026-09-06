@@ -1,6 +1,6 @@
 # Deploy MiniMarket on Vercel
 
-MiniMarket deploys as one container running TanStack Start and Fastify, with Neon PostgreSQL for persistent state. Vercel discovers the root `Dockerfile.vercel`; `vercel.json` enables Fluid compute. All page, API, OAuth, and WebSocket traffic uses the same public origin.
+MiniMarket deploys as one container running TanStack Start and Fastify, with Neon PostgreSQL for persistent state. `vercel.json` explicitly selects `Dockerfile.vercel` as the app service entrypoint, routes all traffic to it, and enables Fluid compute. All page, API, OAuth, and WebSocket traffic uses the same public origin.
 
 Vercel Container Images and native WebSockets are currently beta features available on all plans. Connections end at the function duration limit, and reconnects can land on different instances. The app resnapshots on reconnect and synchronizes committed market versions across instances. See [container images](https://vercel.com/docs/functions/container-images) and [WebSockets](https://vercel.com/docs/functions/websockets).
 
