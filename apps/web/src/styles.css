@@ -1737,3 +1737,25 @@ td small {
 .help-modal .help-dialog {
   width: 100%;
 }
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px 0;
+  font-size: 13px;
+}
+.pagination label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pagination input {
+  width: 72px;
+  padding: 6px;
+}
+.pagination button {
+  padding: 8px 12px;
+}

@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { DOLLAR, CENT, GRANT, orderSchema } from '@minimarket/shared';
+import { DOLLAR, CENT, GRANT, orderSchema, pageQuerySchema } from '@minimarket/shared';
+import { readPage } from '../src/pages.ts';
 import { pool } from '../src/db.ts';
 import { migrate, verifyMigrations } from '../src/migrate.ts';
 import {
@@ -74,6 +75,74 @@ beforeEach(async () => {
   outcomes = created.outcomes;
 });
 afterAll(() => pool.end());
+test('market pagination covers old records, filters before slicing and breaks timestamp ties', async () => {
+  await pool.query(
+    `INSERT INTO markets(id,creator_id,title,category,criteria,source,closes_at,kind)
+    SELECT gen_random_uuid(),$1,'Paged question ' || n,'Science','Criteria for pagination fixtures','https://example.com',now()+interval '1 day','binary' FROM generate_series(1,205) n`,
+    [admin],
+  );
+  const first = await readPage('markets', pageQuerySchema.parse({ pageSize: 100 }), null);
+  const second = await readPage('markets', pageQuerySchema.parse({ pageSize: 100, page: 2 }), null);
+  const last = await readPage('markets', pageQuerySchema.parse({ pageSize: 100, page: 3 }), null);
+  const ids = [...first.items, ...second.items, ...last.items].map((x) => (x as { id: string }).id);
+  expect(new Set(ids).size).toBe(206);
+  expect(last.items).toHaveLength(6);
+  const filtered = await readPage(
+    'markets',
+    pageQuerySchema.parse({ search: 'Paged question 205', pageSize: 1 }),
+    null,
+  );
+  expect(filtered.total).toBe(1);
+  expect((filtered.items[0] as { title: string }).title).toBe('Paged question 205');
+  expect(
+    (await readPage('markets', pageQuerySchema.parse({ search: '%', category: 'Science' }), null))
+      .total,
+  ).toBe(0);
+  expect((await readPage('markets', pageQuerySchema.parse({ page: 999 }), null)).page).toBe(9);
+  await expect(
+    readPage('markets', pageQuerySchema.parse({ admin: 'true' }), null),
+  ).rejects.toMatchObject({ status: 403 });
+});
+test('paginated activity and orders preserve account isolation and reach past historical caps', async () => {
+  const user = (await portfolio(a)).user;
+  for (let i = 0; i < 205; i++) {
+    const placed = await order(a, 'buy', 1, 1);
+    await cancelOrder(a, key(), placed.id);
+  }
+  await order(b, 'buy', 2, 1);
+  const last = await readPage('orders', pageQuerySchema.parse({ page: 3, pageSize: 100 }), user);
+  expect(last.total).toBe(205);
+  expect(last.items).toHaveLength(5);
+  expect((await readPage('open-orders', pageQuerySchema.parse({}), user)).total).toBe(0);
+  const activity = await readPage('activity', pageQuerySchema.parse({ pageSize: 1 }), user);
+  expect(activity.total).toBe(1);
+  expect((activity.items[0] as { kind: string }).kind).toBe('grant');
+  await expect(readPage('activity', pageQuerySchema.parse({}), null)).rejects.toMatchObject({
+    status: 401,
+  });
+  expect(pageQuerySchema.safeParse({ page: 0 }).success).toBe(false);
+  expect(pageQuerySchema.safeParse({ pageSize: 101 }).success).toBe(false);
+});
+test('admins may resolve their own markets and trade pages filter before pagination', async () => {
+  await mint(b, 10);
+  await order(b, 'sell', 50, 10);
+  await order(a, 'buy', 50, 2);
+  await order(a, 'buy', 50, 3);
+  const q = { marketId: m, outcomeId: outcomes[0], pageSize: 1 };
+  const first = await readPage('trades', pageQuerySchema.parse(q), null);
+  const second = await readPage('trades', pageQuerySchema.parse({ ...q, page: 2 }), null);
+  expect(first.total).toBe(2);
+  expect(first.items).not.toEqual(second.items);
+  expect(
+    (await readPage('trades', pageQuerySchema.parse({ ...q, outcomeId: outcomes[1] }), null)).total,
+  ).toBe(0);
+  await moderate(admin, key(), m, 'halt');
+  await settle(admin, key(), m, outcomes[0], 'Admin resolves their own published question');
+  expect((await snapshot(m)).market.status).toBe('settled');
+  const rankings = await readPage('leaderboard', pageQuerySchema.parse({ pageSize: 1 }), null);
+  expect(rankings.total).toBeGreaterThan(1);
+  expect(rankings.items).toHaveLength(1);
+});
 test('price-time priority, resting prices and partial fills preserve assets', async () => {
   await mint(a);
   const first = await order(a, 'sell', 40, 3);

@@ -1,20 +1,21 @@
 import type { Market, Snapshot, Portfolio } from '@minimarket/shared';
 import { pool, transaction, assert, type Tx } from './db.ts';
 import { expireMarket } from './exchange.ts';
-async function marketRows(c: Tx, id?: string, admin = false): Promise<Market[]> {
+export async function marketRows(c: Tx, id?: string | string[], admin = false): Promise<Market[]> {
   const rows = (
     await c.query(
-      `SELECT m.*,EXISTS(SELECT 1 FROM bots b WHERE b.market_id=m.id) AS bot,COALESCE((SELECT SUM(t.price*t.quantity) FROM trades t WHERE t.market_id=m.id),0)::bigint AS volume FROM markets m WHERE ($1::uuid IS NULL OR m.id=$1) AND ($1::uuid IS NOT NULL OR $2 OR NOT m.hidden) ORDER BY m.created_at DESC LIMIT 200`,
-      [id ?? null, admin],
+      `SELECT m.*,EXISTS(SELECT 1 FROM bots b WHERE b.market_id=m.id) AS bot,COALESCE((SELECT SUM(t.price*t.quantity) FROM trades t WHERE t.market_id=m.id),0)::bigint AS volume FROM markets m WHERE ($1::uuid[] IS NULL OR m.id=ANY($1::uuid[])) AND ($1::uuid[] IS NOT NULL OR $2 OR NOT m.hidden) ORDER BY m.created_at DESC LIMIT 200`,
+      [id ? (Array.isArray(id) ? id : [id]) : null, admin],
     )
   ).rows;
-  for (const m of rows) {
-    m.outcomes = (
+  if (rows.length) {
+    const outcomes = (
       await c.query(
-        `SELECT o.*,(SELECT price FROM trades WHERE outcome_id=o.id ORDER BY created_at DESC,id DESC LIMIT 1) AS last,(SELECT MAX(price) FROM orders WHERE outcome_id=o.id AND side='buy' AND status='open' AND $2) AS bid,(SELECT MIN(price) FROM orders WHERE outcome_id=o.id AND side='sell' AND status='open' AND $2) AS ask FROM outcomes o WHERE market_id=$1 ORDER BY ordinal`,
-        [m.id, m.status === 'open' && !m.halted && new Date(m.closes_at).getTime() > Date.now()],
+        `SELECT o.*,(SELECT price FROM trades WHERE outcome_id=o.id ORDER BY created_at DESC,id DESC LIMIT 1) AS last,(SELECT MAX(price) FROM orders WHERE outcome_id=o.id AND side='buy' AND status='open' AND m.status='open' AND NOT m.halted AND m.closes_at>now()) AS bid,(SELECT MIN(price) FROM orders WHERE outcome_id=o.id AND side='sell' AND status='open' AND m.status='open' AND NOT m.halted AND m.closes_at>now()) AS ask FROM outcomes o JOIN markets m ON m.id=o.market_id WHERE o.market_id=ANY($1::uuid[]) ORDER BY o.ordinal`,
+        [rows.map((m) => m.id)],
       )
     ).rows;
+    for (const m of rows) m.outcomes = outcomes.filter((o) => o.market_id === m.id);
   }
   return rows;
 }
@@ -46,7 +47,7 @@ export async function snapshot(id: string): Promise<Snapshot> {
     return { market, books, trades };
   });
 }
-export async function portfolio(id: string): Promise<Portfolio> {
+export async function portfolio(id: string, summary = false): Promise<Portfolio> {
   const due = (
     await pool.query(
       "SELECT DISTINCT m.id FROM markets m JOIN orders o ON o.market_id=m.id WHERE o.account_id=$1 AND o.status='open' AND m.status='open' AND m.closes_at<=now()",
@@ -63,20 +64,20 @@ export async function portfolio(id: string): Promise<Portfolio> {
     assert(user, 'Account not found', 404);
     const holdings = (
       await c.query(
-        `SELECT h.*,o.market_id,o.label,m.title,m.status,(SELECT price FROM trades WHERE outcome_id=o.id ORDER BY created_at DESC,id DESC LIMIT 1) AS mark FROM holdings h JOIN outcomes o ON o.id=h.outcome_id JOIN markets m ON m.id=o.market_id WHERE h.account_id=$1 AND h.quantity>0 ORDER BY m.title,o.ordinal`,
-        [id],
+        `SELECT h.*,o.market_id,o.label,m.title,m.status,(SELECT price FROM trades WHERE outcome_id=o.id ORDER BY created_at DESC,id DESC LIMIT 1) AS mark FROM holdings h JOIN outcomes o ON o.id=h.outcome_id JOIN markets m ON m.id=o.market_id WHERE h.account_id=$1 AND h.quantity>0 AND NOT $2 ORDER BY m.title,o.ordinal`,
+        [id, summary],
       )
     ).rows;
     const orders = (
       await c.query(
-        "SELECT o.*,m.title,oc.label FROM orders o JOIN markets m ON m.id=o.market_id JOIN outcomes oc ON oc.id=o.outcome_id WHERE o.account_id=$1 AND (o.status='open' OR o.id IN (SELECT id FROM orders WHERE account_id=$1 ORDER BY sequence DESC LIMIT 200)) ORDER BY o.sequence DESC",
-        [id],
+        "SELECT o.*,m.title,oc.label FROM orders o JOIN markets m ON m.id=o.market_id JOIN outcomes oc ON oc.id=o.outcome_id WHERE o.account_id=$1 AND (o.status='open' OR o.id IN (SELECT id FROM orders WHERE account_id=$1 ORDER BY sequence DESC LIMIT 200)) ORDER BY o.sequence DESC LIMIT $2",
+        [id, summary ? 0 : null],
       )
     ).rows;
     const history = (
       await c.query(
-        'SELECT l.id,l.kind,l.delta,l.created_at,l.epoch,m.title FROM ledger l LEFT JOIN markets m ON m.id=l.market_id WHERE account_id=$1 ORDER BY l.id DESC LIMIT 200',
-        [id],
+        'SELECT l.id,l.kind,l.delta,l.created_at,l.epoch,m.title FROM ledger l LEFT JOIN markets m ON m.id=l.market_id WHERE account_id=$1 ORDER BY l.id DESC LIMIT $2',
+        [id, summary ? 0 : 200],
       )
     ).rows;
     const profit = (
@@ -85,13 +86,29 @@ export async function portfolio(id: string): Promise<Portfolio> {
         [id, user.epoch],
       )
     ).rows[0].total;
+    const totals = (
+      await c.query(
+        `SELECT COUNT(*)::integer AS count,COALESCE(SUM(quantity*mark),0)::bigint AS value,COALESCE(SUM(quantity) FILTER (WHERE mark IS NULL),0)::bigint AS unpriced FROM (SELECT h.quantity,(SELECT price FROM trades WHERE outcome_id=h.outcome_id ORDER BY created_at DESC,id DESC LIMIT 1) AS mark FROM holdings h WHERE h.account_id=$1 AND h.quantity>0) h`,
+        [id],
+      )
+    ).rows[0];
+    const openOrderCount = Number(
+      (
+        await c.query(
+          "SELECT COUNT(*) AS count FROM orders WHERE account_id=$1 AND status='open'",
+          [id],
+        )
+      ).rows[0].count,
+    );
     return {
       user,
       holdings,
       orders,
       history,
-      estimatedValue: user.cash + holdings.reduce((n, h) => n + h.quantity * (h.mark ?? 0), 0),
-      unpricedShares: holdings.filter((h) => h.mark === null).reduce((n, h) => n + h.quantity, 0),
+      estimatedValue: user.cash + totals.value,
+      holdingsCount: totals.count,
+      openOrderCount,
+      unpricedShares: totals.unpriced,
       settledProfit: profit,
     };
   });

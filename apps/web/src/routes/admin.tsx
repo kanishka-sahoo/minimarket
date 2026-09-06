@@ -1,17 +1,19 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { DOLLAR, type Market } from '@minimarket/shared';
 import { api, useAction, useSession } from '../lib';
+import { Pagination, usePage } from '../components/pagination';
 import { Notice, SignIn } from '../components/ui';
 export const Route = createFileRoute('/admin')({ component: Admin });
 function Admin() {
   const { data: session, isLoading } = useSession();
-  const { data: markets = [] } = useQuery({
-    queryKey: ['markets'],
-    queryFn: () => api<Market[]>('/api/markets'),
-    enabled: session?.user?.admin === true,
-  });
+  const [search, setSearch] = useState('');
+  const listing = usePage<Market>(
+    'markets',
+    { admin: 'true', search },
+    session?.user?.admin === true,
+  );
+  const markets = listing.data?.items ?? [];
   const [selected, setSelected] = useState('');
   if (isLoading) return <p>Loading account…</p>;
   if (!session?.user) return <SignIn />;
@@ -26,6 +28,19 @@ function Admin() {
           <p>Curate discovery, allocate finite liquidity, and settle published questions.</p>
         </div>
       </section>
+      <label>
+        Search markets
+        <input
+          aria-label="Search admin markets"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setSelected('');
+          }}
+        />
+      </label>
+      {listing.error && <Notice error>{listing.error.message}</Notice>}
+      {listing.isPending && <p>Loading markets…</p>}
       <label className="admin-selector">
         Select a market
         <select value={selected} onChange={(e) => setSelected(e.target.value)}>
@@ -38,6 +53,14 @@ function Admin() {
           ))}
         </select>
       </label>
+      <Pagination
+        data={listing.data}
+        setPage={(page) => {
+          listing.setPage(page);
+          setSelected('');
+        }}
+        label="Admin markets"
+      />
       {market && <AdminMarket key={market.id} market={market} />}
     </>
   );

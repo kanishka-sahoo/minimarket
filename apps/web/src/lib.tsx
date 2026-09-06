@@ -63,6 +63,7 @@ export function useLive(id: string) {
         await Promise.all([
           client.invalidateQueries({ queryKey: ['portfolio'] }),
           client.invalidateQueries({ queryKey: ['me'] }),
+          client.invalidateQueries({ queryKey: ['pages'] }),
         ]);
         if (!disposed && socket === ws && ws.readyState === WebSocket.OPEN) setConnected(true);
       } catch {

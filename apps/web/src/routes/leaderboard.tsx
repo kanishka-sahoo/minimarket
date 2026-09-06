@@ -1,21 +1,18 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { TrophyIcon, ArrowUpRightIcon } from '@phosphor-icons/react';
-import { money } from '@minimarket/shared';
+import { money, type Page } from '@minimarket/shared';
 import { api } from '../lib';
-import { Empty } from '../components/ui';
+import { Pagination, usePage } from '../components/pagination';
+import { Empty, Notice } from '../components/ui';
 type Ranking = { id: string; name: string; epoch: number; profit: number; markets: number };
 export const Route = createFileRoute('/leaderboard')({
-  loader: () => api<Ranking[]>('/api/leaderboard'),
+  loader: () => api<Page<Ranking>>('/api/pages/leaderboard'),
   component: Leaderboard,
 });
 function Leaderboard() {
-  const initial = Route.useLoaderData();
-  const { data = initial } = useQuery({
-    queryKey: ['leaderboard'],
-    queryFn: () => api<Ranking[]>('/api/leaderboard'),
-    initialData: initial,
-  });
+  const listing = usePage<Ranking>('leaderboard', {}, true, Route.useLoaderData());
+  const data = listing.data?.items ?? [];
+  const offset = ((listing.data?.page ?? 1) - 1) * (listing.data?.pageSize ?? 24);
   return (
     <>
       <section className="discovery-intro">
@@ -28,7 +25,11 @@ function Leaderboard() {
       </section>
       <div className="leaderboard-layout">
         <section className="ranking-table">
-          {data.length ? (
+          {listing.error ? (
+            <Notice error>{listing.error.message}</Notice>
+          ) : listing.isPending ? (
+            <p>Loading rankings…</p>
+          ) : data.length ? (
             <table>
               <thead>
                 <tr>
@@ -42,7 +43,9 @@ function Leaderboard() {
                 {data.map((r, i) => (
                   <tr key={r.id}>
                     <td>
-                      <span className={`rank rank-${i + 1}`}>{String(i + 1).padStart(2, '0')}</span>
+                      <span className={`rank rank-${offset + i + 1}`}>
+                        {String(offset + i + 1).padStart(2, '0')}
+                      </span>
                     </td>
                     <td>
                       <span className="trader-avatar">{r.name.slice(0, 2).toUpperCase()}</span>
@@ -65,6 +68,7 @@ function Leaderboard() {
               position on.
             </Empty>
           )}
+          <Pagination data={listing.data} setPage={listing.setPage} label="Leaderboard" />
         </section>
         <aside className="writing-guide">
           <h2>Results, without the noise.</h2>

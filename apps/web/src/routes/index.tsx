@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
   MagnifyingGlassIcon,
@@ -8,31 +7,25 @@ import {
   ArrowRightIcon,
   SlidersHorizontalIcon,
 } from '@phosphor-icons/react';
-import { categories, type Market } from '@minimarket/shared';
+import { categories, type Market, type Page } from '@minimarket/shared';
 import { api } from '../lib';
-import { MarketCard, Empty } from '../components/ui';
+import { Pagination, usePage } from '../components/pagination';
+import { MarketCard, Empty, Notice } from '../components/ui';
 export const Route = createFileRoute('/')({
-  loader: () => api<Market[]>('/api/markets'),
+  loader: () => api<Page<Market>>('/api/pages/markets'),
   component: Markets,
 });
 function Markets() {
-  const initial = Route.useLoaderData();
-  const { data = initial } = useQuery({
-    queryKey: ['markets'],
-    queryFn: () => api<Market[]>('/api/markets'),
-    initialData: initial,
-  });
   const [search, setSearch] = useState(''),
     [category, setCategory] = useState('All markets'),
     [sort, setSort] = useState('newest');
-  let shown = data.filter(
-    (m) =>
-      (category === 'All markets' || m.category === category) &&
-      m.title.toLowerCase().includes(search.toLowerCase()),
+  const listing = usePage<Market>(
+    'markets',
+    { search, sort, ...(category === 'All markets' ? {} : { category }) },
+    true,
+    Route.useLoaderData(),
   );
-  if (sort === 'volume') shown = [...shown].sort((a, b) => b.volume - a.volume);
-  if (sort === 'closing')
-    shown = [...shown].sort((a, b) => Date.parse(a.closes_at) - Date.parse(b.closes_at));
+  const shown = listing.data?.items ?? [];
   return (
     <>
       <section className="discovery-intro">
@@ -98,10 +91,13 @@ function Markets() {
       <div className="section-heading">
         <h2>{category === 'All markets' ? 'Explore the possibilities' : category}</h2>
         <span>
-          {shown.length} {shown.length === 1 ? 'market' : 'markets'}
+          {listing.data?.total ?? 0} {listing.data?.total === 1 ? 'market' : 'markets'}
         </span>
       </div>
-      {shown.length ? (
+      {listing.error && <Notice error>{listing.error.message}</Notice>}
+      {listing.isPending ? (
+        <p>Loading markets…</p>
+      ) : shown.length ? (
         <div className="market-grid">
           {shown.map((m) => (
             <MarketCard key={m.id} market={m} />
@@ -112,6 +108,7 @@ function Markets() {
           Try a different search or create the question you have in mind.
         </Empty>
       )}
+      <Pagination data={listing.data} setPage={listing.setPage} label="Markets" />
       <aside className="discovery-note">
         <span className="status-dot" /> Fictional demo markets are labeled. Displayed quotes are
         executable asks, not forecasts. All balances are play money.

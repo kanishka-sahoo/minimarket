@@ -114,3 +114,41 @@ test('websocket reconnects after a network interruption', async ({ page, context
   await expect(page.getByText('Live updates', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 });
+
+test('discovery pages reach older markets and searching resets the page', async ({ page }) => {
+  const { createRequire } = await import('node:module');
+  const { Pool } = createRequire(new URL('../apps/api/package.json', import.meta.url))('pg');
+  const db = new Pool({
+    connectionString:
+      process.env.E2E_DATABASE_URL ??
+      'postgresql://minimarket:minimarket@127.0.0.1:54329/minimarket_e2e',
+  });
+  try {
+    const name = (await db.query('SELECT current_database() AS name')).rows[0].name;
+    if (!name.endsWith('_e2e')) throw new Error('Browser fixtures require an _e2e database');
+    await db.query(`INSERT INTO markets(id,creator_id,title,category,criteria,source,closes_at,kind)
+      SELECT gen_random_uuid(),(SELECT id FROM accounts LIMIT 1),'Pagination browser fixture ' || n,'Science','Fictional pagination test criteria','https://example.com',now()+interval '1 day','binary' FROM generate_series(1,25) n`);
+    await page.goto('/');
+    const pagination = page.getByRole('navigation', { name: 'Markets pagination' });
+    await expect(page.locator('.market-card')).toHaveCount(24);
+    await pagination.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.getByRole('spinbutton', { name: 'Markets page', exact: true })).toHaveValue(
+      '2',
+    );
+    await page
+      .getByRole('textbox', { name: 'Search markets' })
+      .fill('Pagination browser fixture 25');
+    await expect(page.locator('.market-card')).toHaveCount(1);
+    await expect(page.getByRole('spinbutton', { name: 'Markets page', exact: true })).toHaveValue(
+      '1',
+    );
+    await expect(pagination.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  } finally {
+    await db.query("DELETE FROM markets WHERE title LIKE 'Pagination browser fixture %'");
+    await db.end();
+  }
+});

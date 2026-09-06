@@ -14,10 +14,12 @@ import {
   cents,
   money,
   type Snapshot,
+  type Trade,
   type Portfolio,
   type OrderResult,
 } from '@minimarket/shared';
 import { api, useAction, useLive, useSession } from '../lib';
+import { Pagination, usePage } from '../components/pagination';
 import { CategoryIcon, Closing, Notice, PriceChart, Empty } from '../components/ui';
 export const Route = createFileRoute('/markets/$id')({
   loader: ({ params }) => api<Snapshot>('/api/markets/' + params.id),
@@ -34,6 +36,8 @@ function MarketDetail() {
   const connected = useLive(id);
   const [outcomeId, setOutcome] = useState(s.market.outcomes[0].id);
   const [tab, setTab] = useState('Order book');
+  const history = usePage<Trade>('trades', { marketId: id });
+  const chart = usePage<Trade>('trades', { marketId: id, outcomeId, pageSize: '100' });
   const m = s.market,
     o = m.outcomes.find((o) => o.id === outcomeId) ?? m.outcomes[0],
     book = s.books[o.id];
@@ -89,7 +93,9 @@ function MarketDetail() {
               </div>
               <span className="tag">Executed trades</span>
             </div>
-            <PriceChart trades={s.trades} outcome={o} />
+            <PriceChart trades={chart.data?.items ?? []} outcome={o} />
+            {chart.error && <Notice error>{chart.error.message}</Notice>}
+            <Pagination data={chart.data} setPage={chart.setPage} label="Chart trades" />
           </section>
           <section className="outcome-table">
             <div className="table-labels">
@@ -132,7 +138,11 @@ function MarketDetail() {
                 <Book side="Sell orders" levels={book.asks} />
               </div>
             ) : tab === 'Recent trades' ? (
-              s.trades.length ? (
+              history.isPending ? (
+                <p>Loading trades…</p>
+              ) : history.error ? (
+                <Notice error>{history.error.message}</Notice>
+              ) : history.data?.items.length ? (
                 <div className="table-scroll">
                   <table>
                     <thead>
@@ -144,12 +154,12 @@ function MarketDetail() {
                       </tr>
                     </thead>
                     <tbody>
-                      {s.trades.slice(0, 30).map((t) => (
+                      {history.data.items.map((t) => (
                         <tr key={t.id}>
                           <td>{m.outcomes.find((o) => o.id === t.outcome_id)?.label}</td>
                           <td>{cents(t.price)}</td>
                           <td>{t.quantity}</td>
-                          <td>{new Date(t.created_at).toLocaleTimeString()}</td>
+                          <td>{new Date(t.created_at).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -177,6 +187,9 @@ function MarketDetail() {
                 </small>
               </div>
             )}
+            {tab === 'Recent trades' && (
+              <Pagination data={history.data} setPage={history.setPage} label="Trades" />
+            )}
           </section>
         </div>
         <aside className="trade-sidebar">
@@ -198,6 +211,8 @@ function MarketDetail() {
   );
 }
 function Book({ side, levels }: { side: string; levels: { price: number; quantity: number }[] }) {
+  const [page, setPage] = useState(1);
+  const current = Math.min(page, Math.max(1, Math.ceil(levels.length / 8)));
   return (
     <div>
       <h3 className={side === 'Buy orders' ? 'green-text' : ''}>{side}</h3>
@@ -207,7 +222,7 @@ function Book({ side, levels }: { side: string; levels: { price: number; quantit
         <span>Total</span>
       </div>
       {levels.length ? (
-        levels.slice(0, 8).map((l) => (
+        levels.slice((current - 1) * 8, current * 8).map((l) => (
           <div key={l.price} className="book-level">
             <strong>{cents(l.price)}</strong>
             <span>{l.quantity}</span>
@@ -217,6 +232,16 @@ function Book({ side, levels }: { side: string; levels: { price: number; quantit
       ) : (
         <p className="book-empty">No resting orders</p>
       )}
+      <Pagination
+        data={{
+          page: current,
+          pages: Math.max(1, Math.ceil(levels.length / 8)),
+          total: levels.length,
+          pageSize: 8,
+        }}
+        setPage={setPage}
+        label={side}
+      />
     </div>
   );
 }

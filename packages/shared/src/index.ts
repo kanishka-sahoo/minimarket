@@ -165,6 +165,8 @@ export interface LedgerEntry {
   epoch: number;
 }
 export interface Portfolio {
+  holdingsCount: number;
+  openOrderCount: number;
   user: User;
   holdings: Holding[];
   orders: Order[];
@@ -188,3 +190,39 @@ export const money = (n: number, precision = 2) =>
     maximumFractionDigits: precision,
   }).format(n / DOLLAR);
 export const cents = (n: number | null) => (n === null ? '—' : `${Math.round(n / CENT)}¢`);
+
+export const pageQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(24),
+    search: z.string().trim().max(180).default(''),
+    category: z.enum(categories).optional(),
+    sort: z.enum(['newest', 'volume', 'closing']).default('newest'),
+    marketId: idSchema.optional(),
+    outcomeId: idSchema.optional(),
+    admin: z.enum(['true', 'false']).default('false'),
+  })
+  .strict();
+export type PageQuery = z.infer<typeof pageQuerySchema>;
+export interface Page<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
+}
+export type Collection =
+  | 'markets'
+  | 'holdings'
+  | 'orders'
+  | 'open-orders'
+  | 'activity'
+  | 'trades'
+  | 'leaderboard';
+export interface Ranking {
+  id: string;
+  name: string;
+  epoch: number;
+  profit: number;
+  markets: number;
+}

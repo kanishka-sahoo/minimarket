@@ -12,6 +12,7 @@ import {
   setSchema,
   resolutionSchema,
   botSchema,
+  pageQuerySchema,
 } from '@minimarket/shared';
 import { Fault, assert, events, pool } from './db.ts';
 import { authenticated, currentUser, origin, registerAuth } from './auth.ts';
@@ -28,6 +29,7 @@ import {
 } from './exchange.ts';
 import { listMarkets, snapshot, portfolio, leaderboard } from './queries.ts';
 import { migrate, verifyMigrations } from './migrate.ts';
+import { readPage } from './pages.ts';
 export async function buildApp(frontend = false) {
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
@@ -67,9 +69,21 @@ export async function buildApp(frontend = false) {
     idSchema.parse(req.headers['idempotency-key']);
   const marketId = (req: { params: unknown }) => idSchema.parse((req.params as { id: string }).id);
   app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/api/pages/:collection', async (req) => {
+    const collection = z
+      .enum(['markets', 'holdings', 'orders', 'open-orders', 'activity', 'trades', 'leaderboard'])
+      .parse((req.params as { collection: string }).collection);
+    return readPage(collection, pageQuerySchema.parse(req.query), await currentUser(req));
+  });
   app.get('/api/markets', async (req) => listMarkets((await currentUser(req))?.admin === true));
   app.get('/api/markets/:id', async (req) => snapshot(marketId(req)));
-  app.get('/api/portfolio', async (req) => portfolio((await authenticated(req)).id));
+  app.get('/api/portfolio', async (req) =>
+    portfolio(
+      (await authenticated(req)).id,
+      z.object({ summary: z.enum(['true', 'false']).default('false') }).parse(req.query).summary ===
+        'true',
+    ),
+  );
   app.get('/api/leaderboard', async () => leaderboard());
   app.post(
     '/api/markets',

@@ -2,19 +2,40 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ArrowUpRightIcon, WalletIcon, ArrowCounterClockwiseIcon } from '@phosphor-icons/react';
-import { money, cents, type Portfolio } from '@minimarket/shared';
+import {
+  money,
+  cents,
+  type Portfolio,
+  type Holding,
+  type Order,
+  type LedgerEntry,
+  type Collection,
+} from '@minimarket/shared';
 import { api, useAction, useSession } from '../lib';
+import { Pagination, usePage } from '../components/pagination';
 import { Empty, Notice, SignIn } from '../components/ui';
 export const Route = createFileRoute('/portfolio')({ component: PortfolioPage });
 function PortfolioPage() {
   const { data: session, isLoading } = useSession();
   const { data: p, error } = useQuery({
-    queryKey: ['portfolio'],
-    queryFn: () => api<Portfolio>('/api/portfolio'),
+    queryKey: ['portfolio', 'summary'],
+    queryFn: () => api<Portfolio>('/api/portfolio?summary=true'),
     enabled: !!session?.user,
   });
   const [tab, setTab] = useState('Holdings'),
     [reset, setReset] = useState(false);
+  const collection = (
+    {
+      Holdings: 'holdings',
+      'Open orders': 'open-orders',
+      'Order history': 'orders',
+      Activity: 'activity',
+    } as Record<string, Collection>
+  )[tab];
+  const listing = usePage<Holding | Order | LedgerEntry>(collection, {}, !!session?.user);
+  const holdings = (listing.data?.items ?? []) as Holding[];
+  const orders = (listing.data?.items ?? []) as Order[];
+  const history = (listing.data?.items ?? []) as LedgerEntry[];
   const action = useAction();
   if (isLoading) return <p>Loading account…</p>;
   if (!session?.user) return <SignIn />;
@@ -62,16 +83,16 @@ function PortfolioPage() {
         {['Holdings', 'Open orders', 'Order history', 'Activity'].map((t) => (
           <button key={t} className={tab === t ? 'selected' : ''} onClick={() => setTab(t)}>
             {t}
-            {t === 'Open orders' && (
-              <span className="count">{p.orders.filter((o) => o.status === 'open').length}</span>
-            )}
+            {t === 'Open orders' && <span className="count">{p.openOrderCount}</span>}
           </button>
         ))}
       </div>
       {action.isError && <Notice error>{action.error.message}</Notice>}
-      <div className="table-scroll">
+      {listing.error && <Notice error>{listing.error.message}</Notice>}
+      {listing.isPending && <p>Loading {tab.toLowerCase()}…</p>}
+      <div className="table-scroll" aria-busy={listing.isFetching}>
         {tab === 'Holdings' ? (
-          p.holdings.length ? (
+          holdings.length ? (
             <table>
               <thead>
                 <tr>
@@ -83,7 +104,7 @@ function PortfolioPage() {
                 </tr>
               </thead>
               <tbody>
-                {p.holdings.map((h) => (
+                {holdings.map((h) => (
                   <tr key={h.outcome_id}>
                     <td>
                       <Link to="/markets/$id" params={{ id: h.market_id }}>
@@ -105,7 +126,7 @@ function PortfolioPage() {
             </Empty>
           )
         ) : tab === 'Activity' ? (
-          p.history.length ? (
+          history.length ? (
             <table>
               <thead>
                 <tr>
@@ -116,7 +137,7 @@ function PortfolioPage() {
                 </tr>
               </thead>
               <tbody>
-                {p.history.map((h) => (
+                {history.map((h) => (
                   <tr key={h.id}>
                     <td className="capitalize">
                       {h.kind}
@@ -149,7 +170,7 @@ function PortfolioPage() {
                 </tr>
               </thead>
               <tbody>
-                {p.orders
+                {orders
                   .filter((o) => tab === 'Order history' || o.status === 'open')
                   .map((o) => (
                     <tr key={o.id}>
@@ -182,12 +203,13 @@ function PortfolioPage() {
                   ))}
               </tbody>
             </table>
-            {!p.orders.some((o) => tab === 'Order history' || o.status === 'open') && (
+            {!orders.some((o) => tab === 'Order history' || o.status === 'open') && (
               <Empty title="No orders here">Your orders will appear as you trade.</Empty>
             )}
           </>
         )}
       </div>
+      <Pagination data={listing.data} setPage={listing.setPage} label={tab} />
       <section className="reset-panel">
         <div>
           <h3>
@@ -208,7 +230,7 @@ function PortfolioPage() {
               cleared.
             </p>
             <button
-              disabled={action.isPending || p.holdings.length > 0}
+              disabled={action.isPending || p.holdingsCount > 0}
               onClick={() =>
                 action.mutate(
                   { path: '/api/reset', body: {} },
@@ -218,7 +240,7 @@ function PortfolioPage() {
             >
               Confirm reset
             </button>
-            {p.holdings.length > 0 && <small>Sell, redeem, or settle all holdings first.</small>}
+            {p.holdingsCount > 0 && <small>Sell, redeem, or settle all holdings first.</small>}
           </div>
         )}
       </section>
