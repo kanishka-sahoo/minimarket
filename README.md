@@ -2,7 +2,7 @@
 
 A full-stack prediction exchange with free play money, independent outcome order books, a finite-budget liquidity bot, and a responsive TanStack Start interface.
 
-**Status:** implementation and local validation live in this repository. Public deployment and live Google OAuth verification require your Vercel (or Render), Neon, and Google Cloud configuration; no hosted URL or production credentials are included.
+**Production domain:** [minimarket.ksahoo.com](https://minimarket.ksahoo.com). Vercel is connected to this repository for deployments from `main`, with Neon PostgreSQL. Production credentials are managed in Vercel and are excluded from this repository. See the [deployment guide](docs/vercel.md) for configuration and verification.
 
 ## Run locally
 

@@ -22,6 +22,8 @@ The Vercel image sets `RUN_MIGRATIONS=false` and checks that the required migrat
 
 ## 2. Import the repository
 
+The public repository is [kanishka-sahoo/minimarket](https://github.com/kanishka-sahoo/minimarket), connected to the `ksahooprojects/minimarket` Vercel project. Pushes to `main` trigger production deployments. The GitHub Actions workflow runs build, type, formatting, PostgreSQL integration, and browser checks. Production database migrations still run before code requiring the new schema is deployed.
+
 Import this repository into Vercel with the **repository root** as the project root, not `apps/web`. Let Vercel detect `Dockerfile.vercel`; do not select a standalone TanStack deployment or override the Docker build with a frontend-only build command.
 
 Configure these environment variables in Vercel Project Settings for the intended environment:
