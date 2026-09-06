@@ -1,0 +1,14 @@
+.git
+.agents
+.codex
+node_modules
+**/node_modules
+**/.output
+**/.nitro
+**/.tanstack
+.env
+.env.*
+test-results
+playwright-report
+
+.vercel

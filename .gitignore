@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.output/
+.nitro/
+.tanstack/
+dist/
+test-results/
+playwright-report/
+*.log
+
+.vercel/
+.agents/
+.codex/
+skills-lock.json

@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/.output
+**/.nitro
+**/.tanstack
+apps/web/src/routeTree.gen.ts
+pnpm-lock.yaml
+test-results
+playwright-report
+.agents
+.codex
+.vercel
+skills-lock.json
