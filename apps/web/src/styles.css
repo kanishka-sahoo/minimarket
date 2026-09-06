@@ -1,5 +1,10 @@
 @import '@fontsource-variable/dm-sans';
-@import 'tailwindcss';
+/* source(none) disables Tailwind's filesystem class scanning. This project uses
+   no Tailwind utilities, and automatic detection made the client and SSR build
+   passes emit different stylesheets, so the server linked an asset hash the
+   client never wrote. Preflight and the theme still apply; output is now
+   deterministic. */
+@import 'tailwindcss' source(none);
 
 @theme {
   --font-sans: 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif;
